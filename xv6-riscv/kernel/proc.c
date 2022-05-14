@@ -7,22 +7,28 @@
 #include "defs.h"
 
 
-struct cpu cpus[NCPU];
+struct cpu cpus[NCPU]; //was here
 
-struct proc proc[NPROC];
+struct proc proc[NPROC]; //was here
 
-struct proc *initproc;
+struct proc *initproc; //was here
 
-int nextpid = 1;
+int nextpid = 1; //was here
 struct spinlock pid_lock;
 
-int cpus_ll[NCPU];
-struct spinlock cpus_head[NCPU];
+int cpus_ll[NCPU]; //array of all cpus,s.t the value in index x is the first 
+                  //process in the runnable list for cpu x (who's cpu's number is x).
+struct spinlock cpus_head[NCPU]; //array with the dummy heads of the list. 
 
-int sleeping= -1;
+
+//the following are the indexes in the array "proc" of the heads of those lists.
+//upon initialization, while they are still empty, it's -1.
+//whenever a process is added, it's next field should be set to -1.
+int sleeping= -1; 
 int zombie= -1;
 int unused= -1;
-
+ 
+ //the following are the dummy heads of the sleeping, zombie and unused
 struct spinlock sleeping_head;
 struct spinlock zombie_head;
 struct spinlock unused_head;
@@ -31,7 +37,7 @@ extern void forkret(void);
 static void freeproc(struct proc *p);
 
 extern char trampoline[]; // trampoline.S
-extern uint64 cas(volatile void *addr, int expected, int newval); //TASK #1
+extern uint64 cas(volatile void *addr, int expected, int newval); // addad as ordered in TASK #2
 
 // helps ensure that wakeups of wait()ing
 // parents are not lost. helps obey the
@@ -40,24 +46,30 @@ extern uint64 cas(volatile void *addr, int expected, int newval); //TASK #1
 struct spinlock wait_lock;
 
 int
-remove_cs(struct proc *pred, struct proc *curr, struct proc *p){
-  while (curr->next <= p->next) {
+remove_cs(struct proc *pred, struct proc *curr, struct proc *p){ //created
+printf("p->index%d\n", p->index);
+printf("pred: %d\ncurr: %d\n", pred->index, curr->index);
+  while (curr->index <= p->index) {
   if ( p->index == curr->index) {
       pred->next = curr->next;
       return curr->index; 
     }
   release(&pred->lock);
-  printf("%d",132); //1
+  printf("%d\n",132);
+   printf("pred: %d\ncurr: %d\n", pred->index, curr->index);
     pred = curr;
     curr = &proc[curr->next];
+    printf("pred: %d\ncurr: %d\n", pred->index, curr->index);
     acquire(&curr->lock);
+    printf("after lock\n");
   }
 
 return -1;
 }
 
 int
-remove_from_list(struct proc *p){
+remove_from_list(struct proc *p){ //created
+  printf("entered remove_from_list\n");
   struct proc *pred;
   struct proc *curr;
   int ret=-1;
@@ -91,75 +103,35 @@ remove_from_list(struct proc *p){
     
   case UNUSED:
     acquire(&unused_head);
-    pred=&proc[unused];
-    acquire(&pred->lock);
+    pred = &proc[unused];
+    printf("pred lock: %s\n", pred->lock.name);
+    acquire(&pred->lock);     /// PROBLEM IS HERE, FIX
     curr=&proc[pred->next];
     acquire(&curr->lock);
     ret=remove_cs(pred, curr, p);
     release(&curr->lock);
     release(&pred->lock);
     release(&unused_head);
-    printf("%d",184); //4
     return ret;
   
   case RUNNABLE:
-    // switch (p->cpu_num)
-    // {
-    // case 0:
+       printf("entered runnable\n");
       acquire(&cpus_head[cpuid()]);
-      pred=&proc[cpuid()];
+      printf("acquire(&cpus_head[cpuid()])\n");
+      pred = &proc[cpus_ll[cpuid()]];
+      printf("the index of pred is:%d\n",proc[cpus_ll[cpuid()]].index);
+      printf("its comes here\n");
       acquire(&pred->lock);
+      printf("but not here\n");
+      printf("acquire(&pred->lock);\n");
       curr=&proc[pred->next];
+      printf("curr->pid= %d\n", curr->pid);
       acquire(&curr->lock);
-      ret=remove_cs(pred, curr, p);
-      release(&curr->lock);
-      release(&pred->lock);
-      release(&unused_head);
-      printf("%d",200); //5
+      ret = remove_cs(pred, curr, p);
+      release(&cpus_head[cpuid()]);
+      printf("%d\n%d\n",126,ret); 
       return ret;
 
-  //   case 1:
-  //     acquire(&cpu1_head);
-  //     pred=&proc[cpu1];
-  //     acquire(&pred->lock);
-  //     curr=&proc[pred->next];
-  //     acquire(&curr->lock);
-  //     ret=remove_cs(pred, curr, p);
-  //     release(&curr->lock);
-  //     release(&pred->lock);
-  //     release(&unused_head);
-  //     printf("%d",213); //6
-  //     return ret;  
-
-  //   case 2:
-  //     acquire(&cpu2_head);
-  //     pred=&proc[cpu2];
-  //     acquire(&pred->lock);
-  //     curr=&proc[pred->next];
-  //     acquire(&curr->lock);
-  //     ret=remove_cs(pred, curr, p);
-  //     release(&curr->lock);
-  //     release(&pred->lock);
-  //     release(&unused_head);
-  //     printf("%d",226); //7
-  //     return ret;
-
-  //   case 3:
-  //     acquire(&cpu3_head);
-  //     pred=&proc[cpu3];
-  //     acquire(&pred->lock);
-  //     curr=&proc[pred->next];
-  //     acquire(&curr->lock);
-  //     ret=remove_cs(pred, curr, p);
-  //     release(&curr->lock);
-  //     release(&pred->lock);
-  //     release(&unused_head);
-  //     printf("%d",239); //8
-  //     return ret;
-
-  //   default:
-  //     return ret;
-  //   }
   default:
     printf("the problem is here\n");
     break;
@@ -169,28 +141,32 @@ remove_from_list(struct proc *p){
 }
 
 int
-insert_cs(struct proc *pred, struct proc *curr, struct proc *p){
+insert_cs(struct proc *pred, struct proc *curr, struct proc *p){  //created
   while (curr->next != -1) {
+    printf("135 release\n");
     release(&pred->lock);
-    printf("%d\n",257); //9
     pred = curr;
     curr = &proc[curr->next];
     acquire(&curr->lock);
     }
     printf("wjdfjh\n");
     curr->next = p->index;
+    printf("the p->index is:%d\n",p->index);
     p->next=-1;
+    printf("183\n");
     return p->index; 
 }
 
 int
-insert_to_list(struct proc *p){
+insert_to_list(struct proc *p){ //created
+  printf("entered insert_to_list\n");
   struct proc *pred;
   struct proc *curr;
   int ret=-1;
   switch (p->state)
   {
   case SLEEPING:
+    printf("entered sleeping\n");
     acquire(&sleeping_head);
     pred=&proc[sleeping];
     acquire(&pred->lock);
@@ -200,10 +176,10 @@ insert_to_list(struct proc *p){
     release(&curr->lock);
     release(&pred->lock);
     release(&sleeping_head);
-    printf("%d",284); //10
     return ret;
     
   case ZOMBIE:
+    printf("entered zombie\n");
     acquire(&zombie_head);
     pred=&proc[zombie];
     acquire(&pred->lock);
@@ -213,10 +189,11 @@ insert_to_list(struct proc *p){
     release(&curr->lock);
     release(&pred->lock);
     release(&zombie_head);
-    printf("%d",297); //11
+    printf("%d\n%d\n",181,ret);
     return ret;
     
   case UNUSED:
+    printf("entered unused\n");
     acquire(&unused_head);
     pred=&proc[unused];
     acquire(&pred->lock);
@@ -226,77 +203,26 @@ insert_to_list(struct proc *p){
     release(&curr->lock);
     release(&pred->lock);
     release(&unused_head);
-    printf("%d\n",310); 
+    printf("%d\n%d\n",195,ret); 
     return ret;
     
   case RUNNABLE:
-    // switch (p->cpu_num)
-    // {
-    // case 0:
-    printf("entered insert\n");
+    printf("entered runnable\n");
       acquire(&cpus_head[cpuid()]);
-     // printf("cpus_head[cpuid()]->pid= %d\n", cpus_head[cpuid()].pid);
       printf("acquire(&cpus_head[cpuid()])\n");
-      pred=&proc[cpuid()];
-      //printf("proc[cpuid()]->pid= %d\n", proc[cpuid()].pid);
-      //printf("pred=&proc[cpuid()]");
-      //printf("pred->pid= %d\n", pred->pid);
+      pred = &proc[cpus_ll[cpuid()]];
+      printf("the index of pred is:%d\n",proc[cpus_ll[cpuid()]].index);
+      printf("its comes here\n");
       acquire(&pred->lock);
+      printf("but not here\n");
       printf("acquire(&pred->lock);\n");
       curr=&proc[pred->next];
       printf("curr->pid= %d\n", curr->pid);
       acquire(&curr->lock);
-      printf("acquire(&curr->lock)\n");
       ret=insert_cs(pred, curr, p);
-      release(&curr->lock);
-      printf("release(&curr->lock)\n");
-      release(&pred->lock);
-      printf("release(&pred->lock)\n");
       release(&cpus_head[cpuid()]);
-      printf("release(&unused_head->lock)\n");
+      printf("%d\n%d\n",210,ret); 
       return ret;
-
-    // case 1:
-    //   acquire(&cpu1_head);
-    //   pred=&proc[cpu1];
-    //   acquire(&pred->lock);
-    //   curr=&proc[pred->next];
-    //   acquire(&curr->lock);
-    //   ret=insert_cs(pred, curr, p);
-    //   release(&curr->lock);
-    //   release(&pred->lock);
-    //   release(&unused_head);
-    //   return ret;  
-
-    // case 2:
-    //   acquire(&cpu2_head);
-    //   pred=&proc[cpu2];
-    //   acquire(&pred->lock);
-    //   curr=&proc[pred->next];
-    //   acquire(&curr->lock);
-    //   ret=insert_cs(pred, curr, p);
-    //   release(&curr->lock);
-    //   release(&pred->lock);
-    //   release(&unused_head);
-    //   printf("%d",351);
-    //   return ret;
-
-    // case 3:
-    //   acquire(&cpu3_head);
-    //   pred=&proc[cpu3];
-    //   acquire(&pred->lock);
-    //   curr=&proc[pred->next];
-    //   acquire(&curr->lock);
-    //   ret=insert_cs(pred, curr, p);
-    //   release(&curr->lock);
-    //   release(&pred->lock);
-    //   release(&unused_head);
-    //   printf("%d",364);
-    //   return ret;
-
-    // default:
-    //   return ret;
-    // }
     
   default:
     printf("the problem is here\n");
@@ -326,31 +252,52 @@ proc_mapstacks(pagetable_t kpgtbl) {
 
 // initialize the proc table at boot time.
 void
-procinit(void)
+procinit(void) //changed
 {
+  printf("entered procinit\n");
   struct proc *p;
+
+  for (int i = 0; i<NCPU; i++){
+  initlock(&cpus_head[i], "customLock");
+}
   
   initlock(&pid_lock, "nextpid");
   initlock(&wait_lock, "wait_lock");
+  int i=0; //added
   for(p = proc; p < &proc[NPROC]; p++) {
       initlock(&p->lock, "proc");
       p->kstack = KSTACK((int) (p - proc));
-      if(p->pid==0){
-        printf("p->state= %s\n", p->state);
-        unused=0;
+      //added:
+      p->state= UNUSED; 
+      p->index=i; 
+      if(p == &proc[NPROC]-1){ 
         p->next=-1;
-        p->cpu_num=0;
       }
-      else if(p->pid==1){
-        proc[unused].next=1;
-        p->next=-1;
-        p->cpu_num=0;
-      }
-      else{
-        insert_to_list(p);
-        printf("p->state while pid!=0 = %s\n", p->state);
-      } 
+      else
+        p->next=i+1;
+      i++;
+      // printf("the value of the index is:%d\n",i);
   }
+      
+      //insert_to_list(p);
+
+      // if(p->pid==0){ //
+      //   printf("p->state= %s\n", p->state);
+      //   unused=0;
+      //   p->next=-1;
+      //   p->cpu_num=0;
+      // }
+      // else if(p->pid==1){
+      //   proc[unused].next=1;
+      //   p->next=-1;
+      //   p->cpu_num=0;
+      // }
+      // else{
+      //   insert_to_list(p);
+      //   printf("p->state while pid!=0 = %s\n", p->state);
+      // } 
+ // }
+  printf("finished procinit\n");
 }
 
 // Must be called with interrupts disabled,
@@ -366,7 +313,7 @@ cpuid()
 // Return this CPU's cpu struct.
 // Interrupts must be disabled.
 struct cpu*
-mycpu(void) {
+mycpu(void) { 
   int id = cpuid();
   struct cpu *c = &cpus[id];
   return c;
@@ -383,16 +330,11 @@ myproc(void) {
 }
 
 int
-allocpid() {
+allocpid() { //changed as ordered in task 2
   int pid;
   do {
       pid = nextpid;
-      //nextpid++;
   } while(cas(&nextpid, pid, pid+1));
-  // acquire(&pid_lock);
-  // pid = nextpid;
-  // nextpid = nextpid + 1;
-  // release(&pid_lock);
 
   return pid;
 }
@@ -402,8 +344,9 @@ allocpid() {
 // and return with p->lock held.
 // If there are no free procs, or a memory allocation fails, return 0.
 static struct proc*
-allocproc(void)
+allocproc(void) //only added printings for debudding
 {
+  printf("entered allocproc\n");
   struct proc *p;
   acquire(&unused_head);
   for(p = proc; p < &proc[NPROC]; p++) {
@@ -450,8 +393,9 @@ found:
 // including user pages.
 // p->lock must be held.
 static void
-freeproc(struct proc *p)
+freeproc(struct proc *p) //changed
 {
+  printf("entered freeproc\n");
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
@@ -465,9 +409,12 @@ freeproc(struct proc *p)
   p->chan = 0;
   p->killed = 0;
   p->xstate = 0;
-  int index=remove_from_list(p);
+  //changes:
+  int index = remove_from_list(p);
   p->state = UNUSED;
+  printf("calling insert from freeproc\n");
   insert_to_list(&proc[index]);
+  printf("exiting insert from freeproc\n");
 }
 
 // Create a user page table for a given process,
@@ -527,8 +474,9 @@ uchar initcode[] = {
 
 // Set up first user process.
 void
-userinit(void)
+userinit(void) //changed
 {
+  printf("entered userinit\n");
   struct proc *p;
 
   p = allocproc();
@@ -549,10 +497,19 @@ userinit(void)
 
   p->state = RUNNABLE;
   printf("userinit, p->state= %d\n", p->state);
-
+  cpus_ll[cpuid()]=p->index;
+  printf("userinit, p->index= %d\n", p->index);
   release(&p->lock);
-
   insert_to_list(p);
+  
+
+   //changes:
+    printf("calling insert from userinit\n");
+  printf("exiting insert from userinit\n");
+
+  // printf("calling insert from userinit\n");
+  // insert_to_list(p);
+  // printf("exiting insert from userinit\n");
 }
 
 // Grow or shrink user memory by n bytes.
@@ -578,8 +535,9 @@ growproc(int n)
 // Create a new process, copying the parent.
 // Sets up child kernel stack to return as if from fork() system call.
 int
-fork(void)
+fork(void) //changed
 {
+  printf("entered fork\n");
   int i, pid;
   struct proc *np;
   struct proc *p = myproc();
@@ -613,8 +571,9 @@ fork(void)
 
   pid = np->pid;
 
-  np->cpu_num=p->cpu_num; //giving the child it's parent's cpu_num
-
+  np->cpu_num=p->cpu_num; //giving the child it's parent's cpu_num (the only change)
+  
+  printf("559 release\n");
   release(&np->lock);
 
   acquire(&wait_lock);
@@ -623,7 +582,10 @@ fork(void)
 
   acquire(&np->lock);
   np->state = RUNNABLE;
+  insert_to_list(np);
   release(&np->lock);
+  printf("the np->next=%d\n",np->next);
+  printf("the p->next=%d\n",p->next);
 
   return pid;
 }
@@ -649,6 +611,7 @@ reparent(struct proc *p)
 void
 exit(int status)
 {
+  printf("entered exit\n");
   struct proc *p = myproc();
 
   if(p == initproc)
@@ -693,6 +656,7 @@ exit(int status)
 int
 wait(uint64 addr)
 {
+  printf("entered wait\n");
   struct proc *np;
   int havekids, pid;
   struct proc *p = myproc();
@@ -745,8 +709,9 @@ wait(uint64 addr)
 //  - eventually that process transfers control
 //    via swtch back to the scheduler.
 void
-scheduler(void)
+scheduler(void) //changed
 {
+  printf("entered scheduler\n");
   struct proc *p;
   struct cpu *c = mycpu();
   
@@ -754,21 +719,31 @@ scheduler(void)
   for(;;){
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
-
+    //changes:
+    // printf("before acquire\n");
     acquire(&cpus_head[cpuid()]);
-    p=&proc[cpuid()];
-    printf("p.name= %s, pid=\n", p->name, p->pid);
+    // printf("after acquire\n");
+    printf("the cpuid=%d\n",cpuid());
+    printf("the cpus_ll[cpuid()]=%d\n",cpus_ll[cpuid()]);
+    printf("the proc[cpus_ll[cpuid()]].next=%d\n",proc[cpus_ll[cpuid()]].next);
+    p = &proc[proc[cpus_ll[cpuid()]].next];
+    printf("the index of p after choosing:%d\n",p->index);
+    printf("p.next= %d, pid=%d\n", p->next, p->pid);
     release(&cpus_head[cpuid()]);
-    //printf("%d",829);
 
     acquire(&p->lock);
+    printf("after acquire and change state\n");
+    remove_from_list(p);
     p->state = RUNNING;
     c->proc = p;
 
-    for(int i=cpus_ll[0]; i!=-1; i=proc[i].next){
-      printf("pid= %d\n", proc[i].pid);
-    }
-    //printf("myproc()->cpu_num= %d\n", myproc()->cpu_num);
+    // for(int i=cpus_ll[0]; i!=-1; i=proc[i].next){
+    //   printf("pid= %d\n", proc[i].pid);
+    // }
+
+    // //the original code:
+
+    // //printf("myproc()->cpu_num= %d\n", myproc()->cpu_num);
     // for(p = proc; p < &proc[NPROC]; p++) {
     //   acquire(&p->lock);
     //   if(p->state == RUNNABLE) {
@@ -778,6 +753,7 @@ scheduler(void)
     //     p->state = RUNNING;
     //     c->proc = p;
         swtch(&c->context, &p->context);
+        insert_to_list(p);
         printf("exit swtc\n");
 
         // Process is done running for now.
@@ -788,6 +764,9 @@ scheduler(void)
    // }
   }
 }
+//   }
+// }
+
 
 // Switch to scheduler.  Must hold only p->lock
 // and have changed proc->state. Saves and restores
@@ -799,6 +778,7 @@ scheduler(void)
 void
 sched(void)
 {
+  printf("entered sched\n");
   int intena;
   struct proc *p = myproc();
 
@@ -820,6 +800,7 @@ sched(void)
 void
 yield(void)
 {
+  printf("entered yield\n");
   struct proc *p = myproc();
   acquire(&p->lock);
   p->state = RUNNABLE;
@@ -853,6 +834,7 @@ forkret(void)
 void
 sleep(void *chan, struct spinlock *lk)
 {
+  printf("entered sleep\n");
   struct proc *p = myproc();
   
   // Must acquire p->lock in order to
@@ -884,18 +866,43 @@ sleep(void *chan, struct spinlock *lk)
 void
 wakeup(void *chan)
 {
+  printf("entered wakeup\n");
   struct proc *p;
-
-  for(p = proc; p < &proc[NPROC]; p++) {
+  if (sleeping == -1) // if no one is sleeping - do nothing
+    return;
+  acquire(&sleeping_head);
+  p = &proc[sleeping];
+  while(p->next != -1 ) {
     if(p != myproc()){
+      printf("process p->pid = %d\n", p->pid);
       acquire(&p->lock);
-      if(p->state == SLEEPING && p->chan == chan) {
+      if(p->chan == chan) {
         p->state = RUNNABLE;
       }
       release(&p->lock);
     }
+    p++;
   }
 }
+
+//the original code:
+// void
+// wakeup(void *chan)
+// {
+//   printf("entered wakeup\n");
+//   struct proc *p;
+
+//   for(p = proc; p < &proc[NPROC]; p++) {
+//     if(p != myproc()){
+//       printf("process p->pid = %d\n", p->pid)
+//       acquire(&p->lock);
+//       if(p->state == SLEEPING && p->chan == chan) {
+//         p->state = RUNNABLE;
+//       }
+//       release(&p->lock);
+//     }
+//   }
+// }
 
 // Kill the process with the given pid.
 // The victim won't exit until it tries to return
@@ -927,6 +934,7 @@ kill(int pid)
 int
 either_copyout(int user_dst, uint64 dst, void *src, uint64 len)
 {
+  printf("entered either_copyout\n");
   struct proc *p = myproc();
   if(user_dst){
     return copyout(p->pagetable, dst, src, len);
@@ -942,6 +950,7 @@ either_copyout(int user_dst, uint64 dst, void *src, uint64 len)
 int
 either_copyin(void *dst, int user_src, uint64 src, uint64 len)
 {
+  printf("entered either_copyin\n");
   struct proc *p = myproc();
   if(user_src){
     return copyin(p->pagetable, dst, src, len);
@@ -978,4 +987,21 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+
+int set_cpu(int cpu_num){ //added as orderd
+  struct proc *p= myproc();  
+  if(cas(&p->cpu_num, p->cpu_num, cpu_num)){
+    yield();
+    return cpu_num;
+  }
+  return 0;
+}
+
+int get_cpu(){ //added as orderd
+  struct proc *p=myproc();
+  int ans=0;
+  cas(&ans, ans, p->cpu_num);
+    return ans;
 }

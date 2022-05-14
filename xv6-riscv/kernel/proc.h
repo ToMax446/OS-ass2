@@ -92,9 +92,9 @@ struct proc {
   int killed;                  // If non-zero, have been killed
   int xstate;                  // Exit status to be returned to parent's wait
   int pid;                     // Process ID
-  int cpu_num;
-  int index;
-  int next;
+  int cpu_num; //added. the number (cpuid()) of the cpu that runs the process
+  int index; //added
+  int volatile next; //added
 
   // wait_lock must be held when using this:
   struct proc *parent;         // Parent process
