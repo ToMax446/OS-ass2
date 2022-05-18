@@ -95,7 +95,7 @@ struct proc {
   int cpu_num; //added. the number (cpuid()) of the cpu that runs the process
   int index; //added
   int volatile next; //added
-
+  struct spinlock linked_list_lock;
   // wait_lock must be held when using this:
   struct proc *parent;         // Parent process
 

@@ -28,6 +28,7 @@ main(void)
     printf("init: starting sh\n");
     pid = fork();
     if(pid < 0){
+      printf("the pid is:%d\n",pid);
       printf("init: fork failed\n");
       exit(1);
     }
