@@ -48,9 +48,8 @@ struct spinlock wait_lock;
 int
 remove_cs(struct proc *pred, struct proc *curr, struct proc *p){ //created
 int ret=-1;
-printf("p->index=%d\n", p->index);
-printf("pred: %d\ncurr: %d\n", pred->index, curr->index);
-while (curr->index <= p->index) {
+// while (curr->index <= p->index) {
+while (curr->next != -1) {
   if ( p->index == curr->index) {
       pred->next = curr->next;
       ret = curr->index;
@@ -70,8 +69,6 @@ while (curr->index <= p->index) {
 }
 
 int remove_from_list(int p_index, int *list,struct spinlock lock_list){
-  printf("entered remove from list\n");
-  printf("trying to remove %d\n", p_index);
   int ret=-1;
   acquire(&lock_list);
   if(*list==-1){
@@ -88,27 +85,29 @@ int remove_from_list(int p_index, int *list,struct spinlock lock_list){
           return ret;
         }
     }
-    else{
+    else {
       struct proc *pred;
       struct proc *curr;
-      pred=&proc[*list];
-      curr=&proc[pred->next];
+      pred= &proc[*list];
+      curr= &proc[pred->next];
       acquire(&pred->linked_list_lock);
+      if (curr->next == -1 && curr->index == p_index){
+        pred->next = -1;
+        ret = p_index;
+        return ret;
+      }
       acquire(&curr->linked_list_lock);
-      printf("pred is:%d the curr is:%d\n", pred->index,curr->index);
       if (pred->index == p_index){
         *list = curr->index;
         pred->next = -1;  //the caller will insert to the new list
       }
       else {
       ret=remove_cs(pred, curr, &proc[p_index]);
-      printf("changed.\nthe link of %d removed from the list of %s\n",ret ,lock_list.name);
       }
       release(&curr->linked_list_lock);
       release(&pred->linked_list_lock);
     }
   }
-  printf("here4\n");
   release(&lock_list);
   return ret;
 }
@@ -192,7 +191,6 @@ procinit(void) //changed
 
   for (int i = 0; i<NCPU; i++){
     cas(&cpus_ll[i],0,-1); 
-    printf("done cpus_ll[%d]=%d\n",i ,cpus_ll[i]);
 }
   
   initlock(&pid_lock, "nextpid");
@@ -213,11 +211,6 @@ procinit(void) //changed
       insert_to_list(p->index, &unused,unused_head);
       //printf("the value of the index is:%d\n",i);
   }
-
-  
-  
-  printf("the head of the unused list is %d, and the value of next is:%d\n ",unused,proc[unused].next);
-      
   printf("finished procinit\n");
 }
 
@@ -280,12 +273,8 @@ allocproc(void) //only added printings for debudding
 
 found:
   p->pid = allocpid();
-  printf("removed from the unused list is %d\n ",unused);
   remove_from_list(p->index,&unused,unused_head);
-  printf("the head of the unused list is %d \n",unused);
-  printf("allocproc, p->state= %d\n", p->state);
   p->state = USED;
-  printf("allocproc, p->state= %d\n", p->state);
  // printf("%s\n", p->state);
 
   // Allocate a trapframe page.
@@ -335,14 +324,10 @@ freeproc(struct proc *p) //changed
   p->killed = 0;
   p->xstate = 0;
   //changes:
-  printf("calling remove from freeproc to remove it from the zombie list p->index=%d p->state=\n",p->index,p->state);
  remove_from_list(p->index,&zombie,zombie_head);
-  printf("doen remove from freeproc to remove it from the zombie list p->index=%d p->state=\n",p->index,p->state);
+ 
   p->state = UNUSED;
-  printf("calling insert from freeproc\n");
   insert_to_list(p->index,&unused,unused_head);
-  printf("the head of the unused list is %d ",unused);
-  printf("exiting insert from freeproc\n");
   printf("exiting from freeproc\n");
 }
 
@@ -410,7 +395,6 @@ userinit(void) //changed
   struct proc *p;
 
   p = allocproc();
-  printf("come back to userinit from allocproc with state of:%d\n",p->state);
   //printf("userinit, p->state= %d\n", p->state);
   initproc = p;
   
@@ -426,10 +410,8 @@ userinit(void) //changed
   safestrcpy(p->name, "initcode", sizeof(p->name));
   p->cwd = namei("/");
   p->state = RUNNABLE;
-  printf("before inserting from the %d list in userinit\n",p->state);
  
   insert_to_list(p->index,&cpus_ll[0],cpus_head[0]);
-  printf("after inserting from the %d list in userinit\n",p->state);
   release(&p->lock);
   printf("exiting from userinit\n");
  
@@ -471,10 +453,7 @@ fork(void) //changed
   }
 
   // Copy user memory from parent to child.
-  int a = p->state;
-  printf("pstate: %d pindex: %d\nnpstate: %d npindex: %d\n", a, p->index, np->state, np->index);
   if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
-    printf("here\n");
     freeproc(np);
     release(&np->lock);
     return -1;
@@ -499,8 +478,6 @@ fork(void) //changed
 
   np->cpu_num=p->cpu_num; //giving the child it's parent's cpu_num (the only change)
   initlock(&p->linked_list_lock,"inbar");
-  printf("the linked list lock of the np %s is now initiallized.\n",np->name);
-  printf("559 release\n");
   release(&np->lock);
 
   acquire(&wait_lock);
@@ -511,10 +488,6 @@ fork(void) //changed
   np->state = RUNNABLE;
   insert_to_list(np->index,&cpus_ll[p->cpu_num],cpus_head[p->cpu_num]);
   release(&np->lock);
-  printf("the np->next=%d\n",np->next);
-  printf("the np->state=%d\n",np->state);
-  printf("the p->next=%d\n",p->next);
-  printf("the p->state=%d\n",p->state);
 
   printf("finished fork\n");
   return pid;
@@ -573,10 +546,8 @@ exit(int status)
   acquire(&p->lock);
 
   p->xstate = status;
-  printf("before insertind %d to the zombie list. its state is:%d",p->index);
   p->state = ZOMBIE;
-  int ret=insert_to_list(p->index,&zombie,zombie_head);
-  printf("doen with inserting the prosses index %d to the zombie list.\n",ret);
+  insert_to_list(p->index,&zombie,zombie_head);
 
   release(&wait_lock);
 
@@ -663,20 +634,18 @@ scheduler(void) //changed
     
     while (cpus_ll[cpuid()] != -1){   // if no one is RUNNABL, skip swtch 
       // printf("the cpus_ll[%d]=%d with the state of:%d\n",cpuid(),cpus_ll[cpuid()], proc[cpus_ll[cpuid()]].state);
-      acquire(&cpus_head[cpuid()]);
+      // acquire(&cpus_head[cpuid()]);
       p = &proc[cpus_ll[cpuid()]];
-      printf("the pid of p after choosing:%d\n",p->pid);
+      // printf("the pid of p after choosing:%d\n",p->pid);
       // printf("p.next= %d, pid= %d\n", p->next, p->pid);
-      release(&cpus_head[cpuid()]);
+      // release(&cpus_head[cpuid()]);
       remove_from_list(p->index,&cpus_ll[cpuid()],cpus_head[cpuid()]);
       acquire(&p->lock);
         //printf("after acquire\n");
-        printf("after rmoving from the %d list in scheduler\n",p->state);
         p->state = RUNNING;
         c->proc = p;
         // printf("enter swtc with prosses index:%d\n",p->index);
         swtch(&c->context, &p->context);
-        printf("exit swtc with prosses index:%d and state of:%d\n",p->index,p->state);
     
       
 
@@ -704,7 +673,6 @@ scheduler(void) //changed
 void
 sched(void)
 {
-  printf("entered sched\n");
   int intena;
   struct proc *p = myproc();
 
@@ -729,7 +697,6 @@ yield(void)
 {
   printf("entered yield\n");
   struct proc *p = myproc();
-  printf("the index of p is:%d ,the cpu_num of p is:%d, the state is:%d \n", p->index, p->cpu_num,p->state);
   insert_to_list(p->index,&cpus_ll[p->cpu_num],cpus_head[p->cpu_num]);
   acquire(&p->lock);
   p->state = RUNNABLE;
@@ -774,9 +741,7 @@ sleep(void *chan, struct spinlock *lk)
   // (wakeup locks p->lock),
   // so it's okay to release lk.
 
-  printf("the proccec index is:%d and the process state is:%d\n",p->index,p->state);
-  int ret=insert_to_list(p->index,&sleeping,sleeping_head);
-  printf("exit from the insertion of %d to the sleeping list.\n",ret);
+  insert_to_list(p->index,&sleeping,sleeping_head);
   acquire(&p->lock);  //DOC: sleeplock1
   release(lk);
 
@@ -792,7 +757,6 @@ sleep(void *chan, struct spinlock *lk)
   // Reacquire original lock.
   release(&p->lock);
   acquire(lk);
-    printf("exit sleep\n");
 
 }
 
@@ -803,9 +767,6 @@ wakeup(void *chan)
 {
   struct proc *p;
   if (sleeping == -1){
-    printf("no one is sleeping\n");
-      //printf("process p->pid = %d\n", p->pid);
-    //printf("no one is sleeping so exit\n");
     return;
   } // if no one is sleeping - do nothing
   //acquire(&sleeping_head);
@@ -813,8 +774,8 @@ wakeup(void *chan)
   if (p->next == -1){ // there is only one sleeper
     if(p != myproc()){ 
       acquire(&p->lock);
-      if(p->chan == chan&& p->state==SLEEPING) {
-        remove_from_list(p->index,&sleeping,sleeping_head);
+      if(p->chan == chan && p->state == SLEEPING) {
+        remove_from_list(p->index, &sleeping, sleeping_head);
         p->state = RUNNABLE;
         insert_to_list(p->index,&cpus_ll[p->cpu_num],cpus_head[p->cpu_num]);
       }
