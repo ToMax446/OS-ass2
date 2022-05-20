@@ -2800,17 +2800,22 @@ run(void f(char *), char *s) {
 int
 main(int argc, char *argv[])
 {
+  printf("usertests main\n");
   int continuous = 0;
   char *justone = 0;
 
   if(argc == 2 && strcmp(argv[1], "-c") == 0){
     continuous = 1;
+    printf("usertests if1\n");
   } else if(argc == 2 && strcmp(argv[1], "-C") == 0){
     continuous = 2;
+    printf("usertests if2\n");
   } else if(argc == 2 && argv[1][0] != '-'){
     justone = argv[1];
+    printf("usertests if3\n");
   } else if(argc > 1){
     printf("Usage: usertests [-c] [testname]\n");
+    printf("usertests if4\n");
     exit(1);
   }
   

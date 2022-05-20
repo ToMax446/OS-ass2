@@ -48,7 +48,8 @@ void
 release(struct spinlock *lk)
 {
   if(!holding(lk)){
-    printf("the paniced lock is %s\n", lk->name);
+    printf("the paniced lock is r %s\n", lk->name);
+   // printf("the process with the problem is:%d\n",lk->cpu->proc->index);
     panic("release");
 }
   lk->cpu = 0;
