@@ -2824,7 +2824,7 @@ main(int argc, char *argv[])
     char *s;
   } tests[] = {
     {MAXVAplus, "MAXVAplus"},
-    {manywrites, "manywrites"},
+    // {manywrites, "manywrites"},
     {execout, "execout"},
     {copyin, "copyin"},
     {copyout, "copyout"},
