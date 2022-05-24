@@ -65,6 +65,7 @@ CFLAGS += -I.
 CFLAGS += $(shell $(CC) -fno-stack-protector -E -x c /dev/null >/dev/null 2>&1 && echo -fno-stack-protector)
 
 CFLAGS += -D $(BLNCFLG)
+CFLAGS += -Dnumcpus=$(CPUS)
 
 # Disable PIE when possible (for Ubuntu 16.10 toolchain)
 ifneq ($(shell $(CC) -dumpspecs 2>/dev/null | grep -e '[^f]no-pie'),)
@@ -158,8 +159,6 @@ QEMUGDB = $(shell if $(QEMU) -help | grep -q '^-gdb'; \
 ifndef CPUS
 CPUS := 8
 endif
-
-CFLAGS += -Dnumcpus=$(CPUS)
 
 ifndef BLNCFLG
 BLNCFLG := OFF

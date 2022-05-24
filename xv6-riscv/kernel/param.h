@@ -14,6 +14,6 @@
 #ifdef numcpus
 #define CPUS numcpus
 #else
-#define CPUS -1
+#define CPUS 1
 #endif
 

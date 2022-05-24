@@ -79,121 +79,111 @@ int leastUsedCPU(){ // get the CPU with least amount of processes
 
 
 int
-remove_from_list(int to_remove, int* head, struct spinlock *lock){
-
-  acquire(lock);
-  if(*head == -1){
-    release(lock);
+remove_from_list(int p_index, int *list, struct spinlock *lock_list){
+  acquire(lock_list);
+  if(*list == -1){
+    release(lock_list);
+    return -1;
+  }
+  release(lock_list);
+  struct proc *p = 0;
+  acquire(lock_list);
+  if(*list == p_index){
+    p = &proc[*list];
+    acquire(&p->linked_list_lock);
+    *list = p->next;
+    release(&p->linked_list_lock);
+    release(lock_list);
     return 0;
   }
-  release(lock);
-
-  struct proc *p = 0;
-
-  acquire(lock);
-  if(*head == to_remove){
-    p = &proc[*head];
-    acquire(&p->linked_list_lock);
-    *head = p->next;
-    release(&p->linked_list_lock);
-
-    release(lock);
-    return 1;
-  }
-  release(lock);
- 
-  int not_in_list = 0;
-  struct proc *pred_proc = &proc[*head];
+  release(lock_list);
+  int inList = 0;
+  struct proc *pred_proc = &proc[*list];
   acquire(&pred_proc->linked_list_lock);
   p = &proc[pred_proc->next];
   acquire(&p->linked_list_lock);
-
-  int stop = 0;
-  while(!stop){
-
+  int done = 0;
+  while(!done){
     if (pred_proc->next == -1){
-      stop = 1;
-      not_in_list = 1;
+      done = 1;
+      inList = 1;
       continue;
     }
-      
-    if(p->index == to_remove){
-      stop = 1;
+    if(p->index == p_index){
+      done = 1;
       pred_proc->next = p->next;
       continue;
     }
     release(&pred_proc->linked_list_lock);
-
-    
     pred_proc = p;
     p = &proc[p->next];
     acquire(&p->linked_list_lock);
   }
-  release(&pred_proc->linked_list_lock); // last one to release on the way out
-  release(&p->linked_list_lock); // last one to release on the way out
-  if (not_in_list)
-    return 0;
-  return 1;
+  release(&p->linked_list_lock);
+  release(&pred_proc->linked_list_lock); 
+  if (inList)
+    return -1;
+  return p_index;
 }
 
-int
-remove_cs(struct proc *pred, struct proc *curr, struct proc *p){ //created
-int ret = -1;
-int curr_inx = curr->index;
-while (curr_inx != -1) {
-  if ( p->index == curr->index) {
-      pred->next = curr->next;
-      ret = curr->index;
-      release(&curr->linked_list_lock);
-      release(&pred->linked_list_lock);
-      return ret;
-    }
-    release(&pred->linked_list_lock);
-    pred = curr;
-    curr_inx =curr->next;
-    if(curr_inx!=-1){
-      curr = &proc[curr->next];
-      acquire(&curr->linked_list_lock);
-    }
-    else{
-      release(&curr->linked_list_lock);
-    }
-  }
-  return -1;
-}
+// int
+// remove_cs(struct proc *pred, struct proc *curr, struct proc *p){ //created
+// int ret = -1;
+// int curr_inx = curr->index;
+// while (curr_inx != -1) {
+//   if ( p->index == curr->index) {
+//       pred->next = curr->next;
+//       ret = curr->index;
+//       release(&curr->linked_list_lock);
+//       release(&pred->linked_list_lock);
+//       return ret;
+//     }
+//     release(&pred->linked_list_lock);
+//     pred = curr;
+//     curr_inx =curr->next;
+//     if(curr_inx!=-1){
+//       curr = &proc[curr->next];
+//       acquire(&curr->linked_list_lock);
+//     }
+//     else{
+//       release(&curr->linked_list_lock);
+//     }
+//   }
+//   return -1;
+// }
 
-int remove_from_list2(int p_index, int *list, struct spinlock *lock_list){
-  int ret=-1;
-  acquire(lock_list);
-  if(*list==-1){
-    release(lock_list);
-    panic("the remove from list faild.\n");
-  }
-  else{
-        if(p_index == *list){
-          *list = proc[p_index].next;
-          release(lock_list);
-          ret=p_index;
-          return ret;
-        }
-    else{
-      release(lock_list);
-      struct proc *pred;
-      struct proc *curr;
-      pred = &proc[*list];
-      acquire(&pred->linked_list_lock);
-      if(pred->next==-1)
-      {
-        release(&pred->linked_list_lock);
-        panic("the item is not in the list\n");
-      }
-      curr = &proc[pred->next];
-      acquire(&curr->linked_list_lock);     
-      ret = remove_cs(pred, curr, &proc[p_index]);
-    }
-  }
-  return ret;
-}
+// int remove_from_list2(int p_index, int *list, struct spinlock *lock_list){
+//   int ret=-1;
+//   acquire(lock_list);
+//   if(*list==-1){
+//     release(lock_list);
+//     panic("the remove from list faild.\n");
+//   }
+//   else{
+//         if(p_index == *list){
+//           *list = proc[p_index].next;
+//           release(lock_list);
+//           ret=p_index;
+//           return ret;
+//         }
+//     else{
+//       release(lock_list);
+//       struct proc *pred;
+//       struct proc *curr;
+//       pred = &proc[*list];
+//       acquire(&pred->linked_list_lock);
+//       if(pred->next==-1)
+//       {
+//         release(&pred->linked_list_lock);
+//         panic("the item is not in the list\n");
+//       }
+//       curr = &proc[pred->next];
+//       acquire(&curr->linked_list_lock);     
+//       ret = remove_cs(pred, curr, &proc[p_index]);
+//     }
+//   }
+//   return ret;
+// }
 
 int
 insert_cs(struct proc *pred, struct proc *p){  //created
@@ -575,9 +565,9 @@ fork(void)
 
   pid = np->pid;
 
-  #ifdef OFF
+  // #ifdef OFF
   np->cpu_num = p->cpu_num; //giving the child it's parent's cpu_num
-  #endif
+  // #endif
 
   #ifdef ON
   int cpui = leastUsedCPU();
@@ -862,39 +852,72 @@ sleep(void *chan, struct spinlock *lk)
 
 // Wake up all processes sleeping on chan.
 // Must be called without any p->lock.
+
+// void
+// wakeup(void *chan){
+//   struct  proc *p;
+//   int curr = sleeping;
+//   int next;
+//   while (curr != -1){
+//     p = &proc[curr];
+//     next = p->next;
+//      if(p != myproc()){
+//         acquire(&p->lock);
+//         if(p->chan == chan && p->state == SLEEPING) {
+//           p->state = RUNNABLE;
+//           remove_from_list(p->index, &sleeping, &sleeping_head);
+//           #ifdef ON
+//           int cpui = leastUsedCPU();
+//           p->cpu_num = cpui;
+//           inc_cpu_usage(cpui);
+//           #endif
+//           insert_to_list(p->index,&cpus_ll[p->cpu_num],&cpus_head[p->cpu_num]);
+//         }
+//     }
+//     if(next != -1)
+//     // p = &proc[next];
+//     curr = p->next;
+//   }
+  
+// }
 void
 wakeup(void *chan)
 {
   struct proc *p;
+  acquire(&sleeping_head);
   if (sleeping == -1){
+    release(&sleeping_head);
     return;
   }
-  p = &proc[sleeping];
-  int curr= proc[sleeping].index;
-  while(curr !=- 1) { // loop through all sleepers
-    if(p != myproc()){
-      acquire(&p->lock);
-      if(p->chan == chan && p->state == SLEEPING) {
+  else { 
+    release(&sleeping_head);
+    p = &proc[sleeping];
+    int curr= proc[sleeping].index;
+    while(curr !=- 1 && sleeping != -1) { // loop through all sleepers
+      if(p != myproc()){
+        acquire(&p->lock);
+        if(p->chan == chan && p->state == SLEEPING) {
         remove_from_list(p->index, &sleeping, &sleeping_head);
         p->chan=0;
         while(!cas(&p->state, SLEEPING, RUNNABLE));
         #ifdef ON
         int cpui = leastUsedCPU();
         p->cpu_num = cpui;
-        release(&p->lock);
+        // release(&p->lock);
         // while (!cas(&cpus[p->cpu_num].admittedProcs, cpus[p->cpu_num].admittedProcs, cpus[p->cpu_num].admittedProcs + 1))
         inc_cpu_usage(p->cpu_num);
         #endif
         insert_to_list(p->index,&cpus_ll[p->cpu_num],&cpus_head[p->cpu_num]);
         
       }
-      #ifdef OFF
+      // #ifdef OFF
       release(&p->lock);
-      #endif
+      // #endif
     }
     if(p->next !=- 1)
       p = &proc[p->next];
     curr=p->next;
+   }
   }
 }
 
