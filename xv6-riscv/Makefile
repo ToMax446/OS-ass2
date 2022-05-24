@@ -161,7 +161,7 @@ CPUS := 8
 endif
 
 ifndef BLNCFLG
-BLNCFLG := OFF
+BLNCFLG := DEFAULT
 endif
 
 QEMUOPTS = -machine virt -bios none -kernel $K/kernel -m 128M -smp $(CPUS) -nographic
