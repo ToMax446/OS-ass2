@@ -64,17 +64,21 @@ struct spinlock wait_lock;
 // }
 int leastUsedCPU(){ // get the CPU with least amount of processes
   uint64 min = cpus[0].admittedProcs;
-  int id = 0;
+  // int id = 0;
   int idMin = 0;
   for (struct cpu * c = cpus; c < &cpus[CPUS]; c++){
+  // printf("%d\n", c-cpus);
     uint64 procsNum = c->admittedProcs;
     if (procsNum < min){
       min = procsNum;
-      idMin = id;
+      idMin = c-cpus;
+    // id+=min;
     }     
-    id++;
+    // id += procsNum;
+    // id += idMin;
   }
   return idMin;
+  ;
 }
 
 
@@ -571,6 +575,7 @@ fork(void)
 
   #ifdef ON
   int cpui = leastUsedCPU();
+  // int cpui = 0;
   np->cpu_num = cpui;
   // cas(&cpu_usage[cpui], cpu_usage[cpui], cpu_usage[cpui]+1);
   inc_cpu_usage(cpui);
@@ -587,6 +592,7 @@ fork(void)
   acquire(&np->lock);
   np->state = RUNNABLE;
   // insert_to_list(np->index, &cpus_ll[0], &cpus_head[0]);
+  // printf("%d\n", np->cpu_num);
   insert_to_list(np->index, &cpus_ll[np->cpu_num], &cpus_head[np->cpu_num]);
   
   release(&np->lock);
@@ -836,11 +842,11 @@ sleep(void *chan, struct spinlock *lk)
   insert_to_list(p->index, &sleeping, &sleeping_head);
   p->chan = chan;
   // if (p->state == RUNNING){
-  //   p->state = SLEEPING;
   //   }
-  while(!cas(&p->state, RUNNING, SLEEPING));
-  release(lk);
+  // while(!cas(&p->state, RUNNING, SLEEPING));
   acquire(&p->lock);  //DOC: sleeplock1
+  p->state = SLEEPING;
+  release(lk);
   sched();
   // Tidy up.
   p->chan = 0;
@@ -852,15 +858,55 @@ sleep(void *chan, struct spinlock *lk)
 
 // Wake up all processes sleeping on chan.
 // Must be called without any p->lock.
+void wakeup (void* chan){
+  struct proc * p;
+  struct spinlock *l1 = &sleeping_head;
+  struct spinlock *l2;
+
+  acquire(l1);
+
+  // int pred = sleeping;
+  int volatile *link = &sleeping;
+  while (*link != -1){
+    p = &proc[*link];
+    l2 = &p->linked_list_lock;
+    acquire(l2);
+     if(p != myproc()){
+        acquire(&p->lock);
+       if(p->chan == chan && p->state == SLEEPING) {
+        //  release(&p->linked_list_lock);
+         p->state = RUNNABLE;
+         release(&p->lock);
+         // remove from list TODO
+         *link = p->next;
+         p->next = -1;
+          #ifdef ON
+          int cpui = leastUsedCPU();
+          acquire(&p->lock);
+          // int cpui = 0;
+          p->cpu_num = cpui;
+          release(p->lock);
+          inc_cpu_usage(cpui);
+          #endif
+         // add to list
+          release(l1);
+          insert_to_list(p->index,&cpus_ll[p->cpu_num],&cpus_head[p->cpu_num]);
+          l1 = l2;
+          link = &proc[*link].next;
+          // remove_from_list(p->index, &sleeping, &sleeping_head);
+      }
+    }  
+  }
+}
+
 
 // void
 // wakeup(void *chan){
 //   struct  proc *p;
 //   int curr = sleeping;
-//   int next;
 //   while (curr != -1){
 //     p = &proc[curr];
-//     next = p->next;
+//     curr = p->next;
 //      if(p != myproc()){
 //         acquire(&p->lock);
 //         if(p->chan == chan && p->state == SLEEPING) {
@@ -868,58 +914,58 @@ sleep(void *chan, struct spinlock *lk)
 //           remove_from_list(p->index, &sleeping, &sleeping_head);
 //           #ifdef ON
 //           int cpui = leastUsedCPU();
+//           // int cpui = 0;
 //           p->cpu_num = cpui;
 //           inc_cpu_usage(cpui);
 //           #endif
 //           insert_to_list(p->index,&cpus_ll[p->cpu_num],&cpus_head[p->cpu_num]);
 //         }
+//     release(&p->lock);
 //     }
-//     if(next != -1)
-//     // p = &proc[next];
-//     curr = p->next;
+//     // curr = p->next;
 //   }
   
 // }
-void
-wakeup(void *chan)
-{
-  struct proc *p;
-  acquire(&sleeping_head);
-  if (sleeping == -1){
-    release(&sleeping_head);
-    return;
-  }
-  else { 
-    release(&sleeping_head);
-    p = &proc[sleeping];
-    int curr= proc[sleeping].index;
-    while(curr !=- 1 && sleeping != -1) { // loop through all sleepers
-      if(p != myproc()){
-        acquire(&p->lock);
-        if(p->chan == chan && p->state == SLEEPING) {
-        remove_from_list(p->index, &sleeping, &sleeping_head);
-        p->chan=0;
-        while(!cas(&p->state, SLEEPING, RUNNABLE));
-        #ifdef ON
-        int cpui = leastUsedCPU();
-        p->cpu_num = cpui;
-        // release(&p->lock);
-        // while (!cas(&cpus[p->cpu_num].admittedProcs, cpus[p->cpu_num].admittedProcs, cpus[p->cpu_num].admittedProcs + 1))
-        inc_cpu_usage(p->cpu_num);
-        #endif
-        insert_to_list(p->index,&cpus_ll[p->cpu_num],&cpus_head[p->cpu_num]);
+// void
+// wakeup(void *chan)
+// {
+//   struct proc *p;
+//   acquire(&sleeping_head);
+//   if (sleeping == -1){
+//     release(&sleeping_head);
+//     return;
+//   }
+//   else { 
+//     release(&sleeping_head);
+//     p = &proc[sleeping];
+//     int curr= proc[sleeping].index;
+//     while(curr !=- 1 && sleeping != -1) { // loop through all sleepers
+//       if(p != myproc()){
+//         acquire(&p->lock);
+//         if(p->chan == chan && p->state == SLEEPING) {
+//         remove_from_list(p->index, &sleeping, &sleeping_head);
+//         p->chan=0;
+//         while(!cas(&p->state, SLEEPING, RUNNABLE));
+//         #ifdef ON
+//         int cpui = leastUsedCPU();
+//         p->cpu_num = cpui;
+//         // release(&p->lock);
+//         // while (!cas(&cpus[p->cpu_num].admittedProcs, cpus[p->cpu_num].admittedProcs, cpus[p->cpu_num].admittedProcs + 1))
+//         inc_cpu_usage(p->cpu_num);
+//         #endif
+//         insert_to_list(p->index,&cpus_ll[p->cpu_num],&cpus_head[p->cpu_num]);
         
-      }
-      // #ifdef OFF
-      release(&p->lock);
-      // #endif
-    }
-    if(p->next !=- 1)
-      p = &proc[p->next];
-    curr=p->next;
-   }
-  }
-}
+//       }
+//       // #ifdef OFF
+//       release(&p->lock);
+//       // #endif
+//     }
+//     if(p->next !=- 1)
+//       p = &proc[p->next];
+//     curr=p->next;
+//    }
+//   }
+// }
 
 
 
